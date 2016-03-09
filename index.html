@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html ng-app="app">
+
+<head>
+	<title>mondo map thing</title>
+	<link rel="stylesheet" type="text/css" href="https://api.tiles.mapbox.com/mapbox-gl-js/v0.15.0/mapbox-gl.css" />
+	<meta charset=utf-8 />
+	<style media="screen">
+		body {
+			margin: 0;
+		}
+
+		#map {
+			width: 100%;
+			height: 100%;
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			display: none;
+		}
+
+		.mapboxgl-popup {
+			max-width: 400px;
+		}
+
+		.marker-title {
+			font-weight: 700;
+		}
+
+		.emoji {
+			font-size: 3em;
+		}
+
+		img {
+			max-width: 100px;
+		}
+
+		.logo {
+			max-width: 100px;
+		}
+	</style>
+</head>
+
+<body ng-controller="MainController">
+
+	<div id="map"></div>
+
+	<script type="text/javascript" src="https://api.tiles.mapbox.com/mapbox-gl-js/v0.15.0/mapbox-gl.js"></script>
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/angularjs/1.4.5/angular.min.js"></script>
+	<script type="text/javascript">
+		mapboxgl.accessToken = '********';
+		var map = new mapboxgl.Map({
+			container: 'map', // container id
+			style: 'mapbox://styles/mapbox/streets-v8', //stylesheet location
+			center: [-0.1263945226773444, 51.5016739216002], // starting position
+			zoom: 10 // starting zoom
+		});
+
+		var app = angular.module('app', []);
+
+		app.controller('MainController', ['$scope', '$http', function($scope, $http) {
+
+			$scope.balance = 0;
+			$scope.transactions = [];
+
+			var endpoint = "https://api.getmondo.co.uk";
+			var account_id = "acc_*******";
+			var authToken = "*******";
+
+			var updateBalance = function() {
+
+				$http({
+					method: "GET",
+					url: endpoint + "/balance?account_id=" + account_id,
+					headers: {
+						"Authorization": "Bearer "+authToken
+					}
+				}).success(function(data) {
+
+					console.log(data);
+
+					$scope.balance = data.balance;
+
+				}).error(function() {
+
+					console.log("there was an error");
+
+				});
+
+			}
+
+
+			var loadTransactions = function() {
+
+				$http({
+					method: "GET",
+					url: endpoint + "/transactions?since=2009-11-10T23:00:00Z&expand[]=merchant&account_id=" + account_id,
+					headers: {
+						"Authorization": "Bearer "+authToken
+					}
+				}).success(function(data) {
+
+					console.log(data);
+
+					$scope.transactions = data.transactions;
+
+					var markers = {
+						"type": "FeatureCollection",
+						"features": []
+					}
+
+					for (var i = 0; i < data.transactions.length; i++) {
+
+						if (data.transactions[i].merchant) {
+
+							if (data.transactions[i].merchant.address) {
+
+								var imgtags = "";
+
+								for (var j = 0; j < data.transactions[i].attachments.length; j++) {
+									imgtags += "<img src=\"" + data.transactions[i].attachments[j].file_url + "\">";
+								}
+
+								markers.features.push(
+
+									{
+										"type": "Feature",
+										"properties": {
+											"description":
+											"<h1>" + data.transactions[i].merchant.name + "</h1><p><img class=\"logo\" src=\"" + data.transactions[i].merchant.logo + "\"><h2>" + "£" + (data.transactions[i].amount / 100 * -1).toLocaleString(undefined, {minimumFractionDigits: 2}) + "</h2><h3>" + data.transactions[i].created + "</h3><p>" + data.transactions[i].notes + "</p><p class='emoji'>" + data.transactions[i].merchant.emoji + "</p>" + imgtags,
+											"marker-symbol": "circle",
+											"title": "£" + (data.transactions[i].amount / 100 * -1).toLocaleString(undefined, {
+												minimumFractionDigits: 2
+											})
+										},
+										"geometry": {
+											"type": "Point",
+											"coordinates": [data.transactions[i].merchant.address.longitude, data.transactions[i].merchant.address.latitude]
+										}
+									}
+
+
+								);
+
+							}
+						}
+					}
+
+
+					map.addSource("markers", {
+						"type": "geojson",
+						"data": markers
+					});
+
+					map.addLayer({
+						"id": "markers",
+						"type": "symbol",
+						"source": "markers",
+						"interactive": true,
+						"layout": {
+							"icon-image": "{marker-symbol}-15",
+							"text-field": "{title}",
+							"text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"],
+							"text-offset": [0, 0.6],
+							"text-anchor": "top",
+						}
+					});
+
+					var popup = new mapboxgl.Popup({
+						closeButton: false,
+						closeOnClick: false
+					});
+
+					map.on('mousemove', function(e) {
+						map.featuresAt(e.point, {
+							radius: 15,
+							includeGeometry: true,
+							layer: 'markers'
+						}, function(err, features) {
+							map.getCanvas().style.cursor = (!err && features.length) ? 'pointer' : '';
+
+							if (err || !features.length) {
+								popup.remove();
+								return;
+							}
+
+							var feature = features[0];
+
+							popup.setLngLat(feature.geometry.coordinates)
+								.setHTML(feature.properties.description)
+								.addTo(map);
+						});
+					});
+
+
+
+
+				}).error(function() {
+
+					console.log("there was an error");
+
+				});
+
+			}
+
+
+			map.on('load',function () {
+				loadTransactions();
+
+				updateBalance();
+			})
+
+
+
+
+
+		}]);
+	</script>
+
+
+</body>
+
+</html>
